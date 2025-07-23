@@ -1,9 +1,20 @@
+import type {JSX} from "react"
+
+type AriaLiveStatusProps = {
+    currentWord: string
+    lastGuessedLetter: string
+    guessedLetters: string[]
+    numGuessesLeft: number
+}
+
+
+
 export default function AriaLiveStatus({
                                            currentWord,
                                            lastGuessedLetter,
                                            guessedLetters,
                                            numGuessesLeft
-                                       }) {
+                                       }: AriaLiveStatusProps): JSX.Element {
     return (
         <section
             className="sr-only"
