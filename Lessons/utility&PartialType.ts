@@ -29,7 +29,7 @@ function updateUser(id: number, updates: UpdatedUser) {
 // updateUser(1, { username: "new_john_doe" });
 // updateUser(4, { role: "contributor" });
 
-function addNewUser(newUser): User {
+function addNewUser(newUser:  Omit<User, "id"> ): User {
     const user: User = {
         id: nextUserId++,
         ...newUser, 

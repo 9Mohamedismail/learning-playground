@@ -4,19 +4,15 @@
 
 type Address = {
     street: string
-        city: string
-        country: string
+    city: string
+    country: string
 }
 
 type Person = {
     name: string
     age: number
     isStudent: boolean
-    address: {
-        street: string
-        city: string
-        country: string
-    }
+    address: Address
 }
 
 let person1: Person = {
