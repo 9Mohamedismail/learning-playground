@@ -1,88 +1,89 @@
-import { useState } from "react";
-import { languages } from "./languages";
-import { getRandomWord } from "./utils";
+import { useState, useRef, useEffect } from "react";
+import Die from "./Die";
+import { nanoid } from "nanoid";
+import Confetti from "react-confetti";
+import type { JSX } from "react";
 
-import ConfettiContainer from "./components/ConfettiContainer";
-import Header from "./components/Header";
-import GameStatus from "./components/GameStatus";
-import LanguageChips from "./components/LanguageChips";
-import WordLetters from "./components/WordLetters";
-import AriaLiveStatus from "./components/AriaLiveStatus";
-import Keyboard from "./components/Keyboard";
-import NewGameButton from "./components/NewGameButton";
+type Dice = {
+  value: number;
+  isHeld: boolean;
+  id: string;
+};
 
-export default function AssemblyEndgame() {
-  // State values
-  const [currentWord, setCurrentWord] = useState<string>((): string =>
-    getRandomWord()
-  );
-  const [guessedLetters, setGuessedLetters] = useState<string[]>([]);
+export default function App() {
+  const [dice, setDice] = useState<Dice[]>(() => generateAllNewDice());
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Derived values
-  const numGuessesLeft: number = languages.length - 1;
-  const wrongGuessCount: number = guessedLetters.filter(
-    (letter: string): boolean => !currentWord.includes(letter)
-  ).length;
-  const isGameWon: boolean = currentWord
-    .split("")
-    .every((letter: string): boolean => guessedLetters.includes(letter));
-  const isGameLost: boolean = wrongGuessCount >= numGuessesLeft;
-  const isGameOver: boolean = isGameWon || isGameLost;
-  const lastGuessedLetter: string = guessedLetters[guessedLetters.length - 1];
-  const isLastGuessIncorrect: boolean =
-    !!lastGuessedLetter && !currentWord.includes(lastGuessedLetter);
+  const gameWon =
+    dice.every((die: Dice): boolean => die.isHeld) &&
+    dice.every((die: Dice): boolean => die.value === dice[0].value);
 
-  // Static values
-  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  useEffect(() => {
+    if (gameWon) {
+      if (buttonRef.current) {
+        buttonRef.current.focus();
+      } else {
+        throw Error("erm");
+      }
+    }
+  }, [gameWon]);
 
-  function addGuessedLetter(letter: string): void {
-    setGuessedLetters((prevLetters: string[]): string[] =>
-      prevLetters.includes(letter) ? prevLetters : [...prevLetters, letter]
+  function generateAllNewDice(): Dice[] {
+    return new Array(10).fill(0).map(() => ({
+      value: Math.ceil(Math.random() * 6),
+      isHeld: false,
+      id: nanoid(),
+    }));
+  }
+
+  function rollDice(): void {
+    if (!gameWon) {
+      setDice((oldDice: Dice[]) =>
+        oldDice.map(
+          (die: Dice): Dice =>
+            die.isHeld ? die : { ...die, value: Math.ceil(Math.random() * 6) }
+        )
+      );
+    } else {
+      setDice(generateAllNewDice());
+    }
+  }
+
+  function hold(id: string): void {
+    setDice((oldDice: Dice[]) =>
+      oldDice.map(
+        (die: Dice): Dice =>
+          die.id === id ? { ...die, isHeld: !die.isHeld } : die
+      )
     );
   }
 
-  function startNewGame(): void {
-    setCurrentWord(getRandomWord());
-    setGuessedLetters([]);
-  }
+  const diceElements: JSX.Element[] = dice.map((dieObj) => (
+    <Die
+      key={dieObj.id}
+      value={dieObj.value}
+      isHeld={dieObj.isHeld}
+      hold={() => hold(dieObj.id)}
+    />
+  ));
 
   return (
     <main>
-      <ConfettiContainer isGameWon={isGameWon} />
-      <Header />
-
-      <GameStatus
-        isGameWon={isGameWon}
-        isGameLost={isGameLost}
-        isGameOver={isGameOver}
-        isLastGuessIncorrect={isLastGuessIncorrect}
-        wrongGuessCount={wrongGuessCount}
-      />
-
-      <LanguageChips languages={languages} wrongGuessCount={wrongGuessCount} />
-
-      <WordLetters
-        currentWord={currentWord}
-        guessedLetters={guessedLetters}
-        isGameLost={isGameLost}
-      />
-
-      <AriaLiveStatus
-        currentWord={currentWord}
-        lastGuessedLetter={lastGuessedLetter}
-        guessedLetters={guessedLetters}
-        numGuessesLeft={numGuessesLeft}
-      />
-
-      <Keyboard
-        alphabet={alphabet}
-        guessedLetters={guessedLetters}
-        currentWord={currentWord}
-        isGameOver={isGameOver}
-        addGuessedLetter={addGuessedLetter}
-      />
-
-      <NewGameButton isGameOver={isGameOver} startNewGame={startNewGame} />
+      {gameWon && <Confetti />}
+      <div aria-live="polite" className="sr-only">
+        {gameWon && (
+          <p>Congratulations! You won! Press "New Game" to start again.</p>
+        )}
+      </div>
+      <h1 className="title">Tenzies</h1>
+      <p className="instructions">
+        Roll until all dice are the same. Click each die to freeze it at its
+        current value between rolls.
+      </p>
+      <div className="dice-container">{diceElements}</div>
+      <button ref={buttonRef} className="roll-dice" onClick={rollDice}>
+        {gameWon ? "New Game" : "Roll"}
+      </button>
     </main>
   );
 }
