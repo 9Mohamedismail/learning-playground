@@ -34,6 +34,9 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", () => {
     console.log("user disconnected");
   });
+  socket.on("chat delete", () => {
+    io.emit("chat delete", 0);
+  });
   socket.on("chat message", async (msg, clientOffset, callback) => {
     let result;
     try {
@@ -71,6 +74,10 @@ io.on("connection", async (socket) => {
       console.error("Backfill failed:", e);
     }
   }
+});
+
+app.get("/DELETE", async (req, res) => {
+  await db.run("DELETE FROM messages");
 });
 
 server.listen(3000, () => {
