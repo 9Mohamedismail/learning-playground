@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { Server } from "socket.io";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import cors from "cors";
 
 const db = await open({
   filename: "chat.db",
@@ -14,13 +15,20 @@ const db = await open({
 await db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        client_offset TEXT UNIQUE,
-        content TEXT
+        room TEXT NOT NULL,
+        client_offset TEXT NOT NULL,
+        content TEXT NOT NULL,
+        UNIQUE(room, client_offset)
     );
     `);
 
 const app = express();
 const server = createServer(app);
+
+app.use(
+  cors({ origin: "http://localhost:5173", methods: ["GET", "POST", "DELETE"] })
+);
+
 const io = new Server(server, {
   connectionStateRecovery: {},
   cors: {
@@ -31,20 +39,37 @@ const io = new Server(server, {
 
 io.on("connection", async (socket) => {
   console.log("a user connected");
+  socket.on("join room", async (room) => {
+    socket.join(room);
+    socket.data.room = room;
+
+    if (!socket.recovered) {
+      const since = socket.handshake.auth?.serverOffset?.[room] || 0;
+      try {
+        const rows = await db.all(
+          "SELECT id, content FROM messages WHERE id > ? AND room = ? ORDER BY id ASC",
+          [since, room]
+        );
+        for (const row of rows) {
+          socket.emit("chat message", row.content, row.id);
+        }
+      } catch (e) {
+        console.error("Backfill failed:", e);
+      }
+    }
+  });
   socket.on("disconnect", () => {
     console.log("user disconnected");
   });
-  socket.on("chat delete", () => {
-    io.emit("chat delete", 0);
-  });
-  socket.on("chat message", async (msg, clientOffset, callback) => {
+  socket.on("chat message", async (msg, clientOffset, room, callback) => {
     let result;
     try {
       // store the message in the database
       result = await db.run(
-        "INSERT INTO messages (content, client_offset) VALUES (?, ?)",
+        "INSERT INTO messages (content, client_offset, room) VALUES (?, ?, ?)",
         msg,
-        clientOffset
+        clientOffset,
+        room
       );
     } catch (e) {
       if (e.errno === 19 /* SQLITE_CONSTRAINT */) {
@@ -56,28 +81,16 @@ io.on("connection", async (socket) => {
       return;
     }
     // include the offset with the message
-    io.emit("chat message", msg, result.lastID);
+    io.to(room).emit("chat message", msg, result.lastID);
     callback();
   });
-
-  if (!socket.recovered) {
-    const since = socket.handshake.auth.serverOffset || 0;
-    try {
-      const rows = await db.all(
-        "SELECT id, content FROM messages WHERE id > ? ORDER BY id ASC",
-        [since]
-      );
-      for (const row of rows) {
-        socket.emit("chat message", row.content, row.id);
-      }
-    } catch (e) {
-      console.error("Backfill failed:", e);
-    }
-  }
 });
 
-app.get("/DELETE", async (req, res) => {
-  await db.run("DELETE FROM messages");
+app.delete("/delete/:room", async (req, res) => {
+  const room = req.params.room;
+  await db.run("DELETE FROM messages WHERE room = ?", room);
+  io.to(room).emit("chat delete", 0);
+  res.sendStatus(204);
 });
 
 server.listen(3000, () => {
